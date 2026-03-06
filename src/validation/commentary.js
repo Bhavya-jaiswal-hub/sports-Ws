@@ -30,18 +30,22 @@ export const createCommentarySchema = z.object({
 
   period: z
     .string()
+    .trim()
     .min(1, "Period is required"),
 
   eventType: z
     .string()
+    .trim()
     .min(1, "Event type is required"),
 
   actor: z
     .string()
+    .trim()
     .min(1, "Actor is required"),
 
   team: z
     .string()
+    .trim()
     .min(1, "Team is required"),
 
   message: z
@@ -51,6 +55,7 @@ export const createCommentarySchema = z.object({
           ? "Message is required"
          : "Not a string",
     })
+    .trim()
     .min(1, { error: "Message cannot be empty" }),
 
   metadata: z
