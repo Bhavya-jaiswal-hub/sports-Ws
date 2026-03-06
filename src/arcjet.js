@@ -18,11 +18,17 @@ export const httpArcjet = arcjetKey
     key: arcjetKey,
     rules: [
         shield({ mode: arcjetMode }),
-        detectBot({ mode: arcjetMode, allow: ['CATEGORY:SEARCH_ENGINE', 'CATEGORY:PREVIEW'] }),
+        
         slidingWindow({ mode: arcjetMode, interval: httpRateInterval, max: httpRateLimit })
     ]
   })
   : null; 
+
+  export const httpArcjetWithBot = httpArcjet
+  ? httpArcjet.withRule(
+      detectBot({ mode: arcjetMode, allow: ['CATEGORY:SEARCH_ENGINE', 'CATEGORY:PREVIEW'] })
+    )
+  : null;
 
 
 export const wsArcjet =  arcjetKey ? 
