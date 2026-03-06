@@ -74,7 +74,9 @@ commentaryRouter.post("/", async (req, res) => {
 
     const bodyResult = createCommentarySchema.safeParse(req.body);
 
-    console.log("BODY:", req.body);
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("Received commentary payload");
+    }
     if(!bodyResult.success){
          return res.status(400).json({error: 'Invalid commentary payload.', details: bodyResult.error.issues});
     } 
@@ -88,11 +90,15 @@ commentaryRouter.post("/", async (req, res) => {
                         ...rest
         }).returning(); 
 
-        if(res.app.locals.broadcastCommentary) {
-             res.app.locals.broadcastCommentary(result.matchId, result);
+         if (res.app.locals.broadcastCommentary) {
+         try {
+           res.app.locals.broadcastCommentary(result.matchId, result);
+          } catch (broadcastError) {
+            console.error("Failed to broadcast commentary:", broadcastError);
+          }
         }
 
-        res.status(201).json({data: result});
+        return res.status(201).json({ data: result });
     } catch (error) {
         console.error('Failed to create commentary:' , error);
         res.status(500).json({error: 'Failed to create commentary.'});

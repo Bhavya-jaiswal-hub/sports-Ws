@@ -75,6 +75,9 @@ function broadcastToMatch(matchId, payload){
 
 }
 
+const MAX_SUBSCRIPTIONS_PER_SOCKET = 100;
+const isValidMatchId = (value) => Number.isSafeInteger(value) && value > 0;
+
 function handleMessage(socket, data) {
       let message;
 
@@ -85,7 +88,20 @@ function handleMessage(socket, data) {
    return;
 }
 
-      if(message ?.type === "subscribe" && Number.isInteger(message.matchId)) {
+      if(message?.type === "subscribe") {
+
+
+       if (!isValidMatchId(message.matchId)) {
+                sendJson(socket, { type: "error", message: "Invalid matchId" });
+                return;
+           }
+           if (
+                !socket.Subscriptions.has(message.matchId) &&
+                socket.Subscriptions.size >= MAX_SUBSCRIPTIONS_PER_SOCKET
+           ) {
+                sendJson(socket, { type: "error", message: "Subscription limit reached" });
+                return;
+           }   
            subscribe(message.matchId, socket);
            socket.Subscriptions.add(message.matchId);
            sendJson(socket, {type: 'subscribed' , matchId: message.matchId});

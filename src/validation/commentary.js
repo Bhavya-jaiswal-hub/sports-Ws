@@ -46,9 +46,12 @@ export const createCommentarySchema = z.object({
 
   message: z
     .string({
-      required_error: "Message is required",
+      error: (issue) =>
+        issue.input === undefined
+          ? "Message is required"
+         : "Not a string",
     })
-    .min(1, "Message cannot be empty"),
+    .min(1, { error: "Message cannot be empty" }),
 
   metadata: z
     .record( z.string() ,z.any())
