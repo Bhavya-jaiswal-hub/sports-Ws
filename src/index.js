@@ -9,6 +9,7 @@ import { securityMiddleware } from './arcjet.js';
 import { commentaryRouter } from './routes/commentary.js';
 
 const app = express();
+app.set("trust proxy", true);
 
 const parsedPort = Number(process.env.PORT);
 const PORT =
