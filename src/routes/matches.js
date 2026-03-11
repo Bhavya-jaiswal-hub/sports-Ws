@@ -28,8 +28,11 @@ matchRouter.get('/' ,  async(req, res) => {
          .limit(limit) 
 
          return res.json({ data})
-     } catch(e) {
-         res.status(500).json({ error: 'Failed to list matches.'});
+     } catch(error) {
+        //  res.status(500).json({ error: 'Failed to list matches.'});
+
+         console.error(error);
+   res.status(500).json({ error: error.message });
      }
 }) 
 

@@ -141,4 +141,8 @@ dist
 # Vite files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
-.vite/
+.vite/ 
+
+# testing files
+src/data/data.json 
+src/seed/seed.js
