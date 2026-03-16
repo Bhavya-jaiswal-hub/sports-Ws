@@ -13,9 +13,15 @@ import { commentaryRouter } from './routes/commentary.js';
 const app = express();
 app.set("trust proxy", true);
 
-app.use(cors({
-  origin: 'http://localhost:5173'
-}));
+// CORS: allow localhost for dev + comma-separated CORS_ORIGINS for deployed envs
+const allowList = (process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+const corsOptions = {
+  origin: allowList.length ? allowList : ['http://localhost:5173'],
+};
+app.use(cors(corsOptions));
 
 const parsedPort = Number(process.env.PORT);
 const PORT =
