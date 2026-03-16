@@ -1,5 +1,5 @@
 import { WebSocket, WebSocketServer } from "ws"; 
-import { wsArcjet } from "../arcjet.js";
+import { wsArcjet, getClientIp } from "../arcjet.js";
 
 
 const matchSubscribers = new Map();
@@ -124,6 +124,10 @@ export function attachWebSocketServer(server) {
 
         if(wsArcjet) {
              try {
+                const ip = getClientIp(req);
+                if(ip) {
+                  req.ip = ip;
+                }
                 const decision = await wsArcjet.protect(req);
 
                 if(decision.isDenied()){

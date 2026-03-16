@@ -41,10 +41,24 @@ arcjet({
     ]
 }) : null; 
 
+export function getClientIp(req) {
+    return (
+      req.ip ||
+      req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+      req.socket?.remoteAddress ||
+      null
+    );
+}
 
 export function securityMiddleware() {
      return async (req,res ,next) => {
          if(!httpArcjet) return next();
+
+         const ip = getClientIp(req);
+         // Arcjet fingerprinting needs an IP; skip protection if Render/health checks omit it
+         if(!ip) return next();
+         // ensure req.ip is populated for arcjet
+         req.ip = ip;
 
          try {
             const decision =  await httpArcjet.protect(req);
