@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import cors from 'cors';
 import AgentAPI from 'apminsight';
 AgentAPI.config();
 
@@ -11,6 +12,10 @@ import { commentaryRouter } from './routes/commentary.js';
 
 const app = express();
 app.set("trust proxy", true);
+
+app.use(cors({
+  origin: 'http://localhost:5173'
+}));
 
 const parsedPort = Number(process.env.PORT);
 const PORT =

@@ -57,7 +57,7 @@ function broadcastToAll(wss , payload) {
          client.send(JSON.stringify(payload))
     } 
 } 
-
+ // this function is used to boradcast only the subscribers those only subscribed the match 
 function broadcastToMatch(matchId, payload){
       const subscribers = matchSubscribers.get(matchId);
       if(!subscribers || subscribers.size === 0) {

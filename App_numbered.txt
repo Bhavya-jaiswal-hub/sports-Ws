@@ -1,0 +1,692 @@
+1	import { useState, useEffect, useRef, useCallback } from "react";
+2	
+3	const API_BASE = "http://localhost:8000";
+4	const WS_URL = "ws://localhost:8000/ws";
+5	
+6	const SPORT_COLORS = {
+7	  FOOTBALL: { bg: "##d4edda", accent: "#2e7d32", emoji: "⚽" },
+8	  CRICKET: { bg: "#ffeeba", accent: "#f57f17", emoji: "🏏" },
+9	  BASKETBALL: { bg: "#fbd0db", accent: "#c62828", emoji: "🏀" },
+10	  TENNIS: { bg: "#cce5ff", accent: "#1565c0", emoji: "🎾" },
+11	  DEFAULT: { bg: "#e8d5f5", accent: "#6a1b9a", emoji: "🏆" },
+12	};
+13	
+14	const getSportStyle = (sport) =>
+15	  SPORT_COLORS[(sport || "").toUpperCase()] || SPORT_COLORS.DEFAULT;
+16	
+17	const EVENT_COLORS = {
+18	  GOAL: "#f59e0b",
+19	  SHOT: "#3b82f6",
+20	  PASS: "#10b981",
+21	  FOUL: "#ef4444",
+22	  YELLOW_CARD: "#eab308",
+23	  RED_CARD: "#dc2626",
+24	  SUBSTITUTION: "#8b5cf6",
+25	  KICKOFF: "#06b6d4",
+26	  START: "#22c55e",
+27	  BUILD_UP: "#334155",
+28	  DEFAULT: "#64748b",
+29	};
+30	
+31	const getEventColor = (type) =>
+32	  EVENT_COLORS[(type || "").toUpperCase()] || EVENT_COLORS.DEFAULT;
+33	
+34	function useWebSocket() {
+35	  const wsRef = useRef(null);
+36	  const [connected, setConnected] = useState(false);
+37	  const [apiCount, setApiCount] = useState(0);
+38	  const subscribedRef = useRef(new Set());
+39	  const listenersRef = useRef([]);
+40	
+41	  const addListener = useCallback((fn) => {
+42	    listenersRef.current.push(fn);
+43	    return () => {
+44	      listenersRef.current = listenersRef.current.filter((f) => f !== fn);
+45	    };
+46	  }, []);
+47	
+48	  const connect = useCallback(() => {
+49	    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+50	    const ws = new WebSocket(WS_URL);
+51	    wsRef.current = ws;
+52	    ws.onopen = () => setConnected(true);
+53	    ws.onclose = () => {
+54	      setConnected(false);
+55	      setTimeout(connect, 3000);
+56	    };
+57	    ws.onerror = () => ws.close();
+58	    ws.onmessage = (e) => {
+59	      try {
+60	        const msg = JSON.parse(e.data);
+61	        listenersRef.current.forEach((fn) => fn(msg));
+62	      } catch {}
+63	    };
+64	  }, []);
+65	
+66	  useEffect(() => {
+67	    connect();
+68	    return () => wsRef.current?.close();
+69	  }, [connect]);
+70	
+71	  const subscribe = useCallback((matchId) => {
+72	    if (subscribedRef.current.has(matchId)) return;
+73	    if (wsRef.current?.readyState === WebSocket.OPEN) {
+74	      wsRef.current.send(JSON.stringify({ type: "subscribe", matchId }));
+75	      subscribedRef.current.add(matchId);
+76	    }
+77	  }, []);
+78	
+79	  const unsubscribe = useCallback((matchId) => {
+80	    if (!subscribedRef.current.has(matchId)) return;
+81	    if (wsRef.current?.readyState === WebSocket.OPEN) {
+82	      wsRef.current.send(JSON.stringify({ type: "unsubscribe", matchId }));
+83	      subscribedRef.current.delete(matchId);
+84	    }
+85	  }, []);
+86	
+87	  const incrementApi = useCallback(() => setApiCount((c) => c + 1), []);
+88	
+89	  return { connected, apiCount, incrementApi, subscribe, unsubscribe, addListener };
+90	}
+91	
+92	function ScoreBadge({ score, highlight }) {
+93	  return (
+94	    <span
+95	      style={{
+96	        display: "inline-flex",
+97	        alignItems: "center",
+98	        justifyContent: "center",
+99	        width: 44,
+100	        height: 44,
+101	        borderRadius: 10,
+102	        background: highlight ? "#F5C400" : "#dde3ec",
+103	        color: highlight ? "#1a1a1a" : "#0f172a",
+104	        fontFamily: "'Bebas Neue', cursive",
+105	        fontSize: 22,
+106	        fontWeight: 700,
+107	        transition: "all 0.3s ease",
+108	        boxShadow: highlight ? "0 0 0 3px #F5C40044" : "none",
+109	        animation: highlight ? "scorePop 0.4s ease" : "none",
+110	      }}
+111	    >
+112	      {score}
+113	    </span>
+114	  );
+115	}
+116	
+117	function StatusDot({ status }) {
+118	  const colors = {
+119	    live: "#22c55e",
+120	    scheduled: "#f59e0b",
+121	    finished: "#64748b",
+122	  };
+123	  return (
+124	    <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+125	      <span
+126	        style={{
+127	          width: 8,
+128	          height: 8,
+129	          borderRadius: "50%",
+130	          background: colors[status] || "#64748b",
+131	          display: "inline-block",
+132	          boxShadow: status === "live" ? `0 0 0 3px ${colors.live}33` : "none",
+133	          animation: status === "live" ? "livePulse 1.5s infinite" : "none",
+134	        }}
+135	      />
+136	      <span
+137	        style={{
+138	          fontSize: 11,
+139	          fontWeight: 700,
+140	          color: colors[status],
+141	          textTransform: "uppercase",
+142	          letterSpacing: 1,
+143	          fontFamily: "'DM Mono', monospace",
+144	        }}
+145	      >
+146	        {status}
+147	      </span>
+148	    </span>
+149	  );
+150	}
+151	
+152	function MatchCard({ match, onWatch, watching, ws }) {
+153	  const sport = getSportStyle(match.sport);
+154	  const [homeScore, setHomeScore] = useState(match.homeScore);
+155	  const [awayScore, setAwayScore] = useState(match.awayScore);
+156	  const [flashHome, setFlashHome] = useState(false);
+157	  const [flashAway, setFlashAway] = useState(false);
+158	  const [justCreated, setJustCreated] = useState(match._new || false);
+159	
+160	  useEffect(() => {
+161	    if (justCreated) {
+162	      const t = setTimeout(() => setJustCreated(false), 1200);
+163	      return () => clearTimeout(t);
+164	    }
+165	  }, [justCreated]);
+166	
+167	  useEffect(() => {
+168	    return ws.addListener((msg) => {
+169	      if (msg.type === "commentary" && msg.data?.matchId === match.id) {
+170	        const d = msg.data;
+171	        if (d.eventType?.toUpperCase() === "GOAL") {
+172	          if (d.team === match.homeTeam) {
+173	            setHomeScore((s) => s + 1);
+174	            setFlashHome(true);
+175	            setTimeout(() => setFlashHome(false), 600);
+176	          } else {
+177	            setAwayScore((s) => s + 1);
+178	            setFlashAway(true);
+179	            setTimeout(() => setFlashAway(false), 600);
+180	          }
+181	        }
+182	      }
+183	    });
+184	  }, [ws, match]);
+185	
+186	  return (
+187	    <div
+188	      style={{
+189	        background: "#fff",
+190	        borderRadius: 18,
+191	        border: watching ? `2px solid ${sport.accent}` : "2px solid #dde3ec",
+192	        padding: "20px 22px",
+193	        display: "flex",
+194	        flexDirection: "column",
+195	        gap: 14,
+196	        transition: "all 0.3s ease",
+197	        boxShadow: watching
+198	          ? `0 8px 32px ${sport.accent}22`
+199	          : "0 4px 24px #00000018",
+200	        animation: justCreated ? "cardSlideIn 0.5s ease" : "none",
+201	        cursor: "default",
+202	        position: "relative",
+203	        overflow: "hidden",
+204	      }}
+205	    >
+206	      {justCreated && (
+207	        <div
+208	          style={{
+209	            position: "absolute",
+210	            top: 0,
+211	            left: 0,
+212	            right: 0,
+213	            height: 3,
+214	            background: `linear-gradient(90deg, ${sport.accent}, #F5C400)`,
+215	            animation: "progressBar 1.2s ease forwards",
+216	          }}
+217	        />
+218	      )}
+219	      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+220	        <span
+221	          style={{
+222	            background: sport.bg,
+223	            color: sport.accent,
+224	            borderRadius: 20,
+225	            padding: "3px 10px",
+226	            fontSize: 11,
+227	            fontWeight: 700,
+228	            fontFamily: "'DM Mono', monospace",
+229	            letterSpacing: 1,
+230	            textTransform: "uppercase",
+231	          }}
+232	        >
+233	          {sport.emoji} {match.sport}
+234	        </span>
+235	        <StatusDot status={match.status} />
+236	      </div>
+237	
+238	      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+239	        <div style={{ flex: 1 }}>
+240	          <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 20, color: "#0a0f1a", letterSpacing: 0.5 }}>
+241	            {match.homeTeam}
+242	          </div>
+243	          <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 20, color: "#0a0f1a", letterSpacing: 0.5, marginTop: 6 }}>
+244	            {match.awayTeam}
+245	          </div>
+246	        </div>
+247	        <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "center" }}>
+248	          <ScoreBadge score={homeScore} highlight={flashHome} />
+249	          <ScoreBadge score={awayScore} highlight={flashAway} />
+250	        </div>
+251	      </div>
+252	
+253	      <div
+254	        style={{
+255	          borderTop: "1px solid #dde3ec",
+256	          paddingTop: 12,
+257	          display: "flex",
+258	          justifyContent: "space-between",
+259	          alignItems: "center",
+260	        }}
+261	      >
+262	        <span style={{ fontSize: 11, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>
+263	          {new Date(match.startTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+264	        </span>
+265	        {watching ? (
+266	          <div style={{ display: "flex", gap: 8 }}>
+267	            <button
+268	              style={{
+269	                background: sport.bg,
+270	                color: sport.accent,
+271	                border: "none",
+272	                borderRadius: 20,
+273	                padding: "7px 16px",
+274	                fontFamily: "'DM Mono', monospace",
+275	                fontSize: 11,
+276	                fontWeight: 700,
+277	                cursor: "pointer",
+278	                letterSpacing: 0.5,
+279	              }}
+280	            >
+281	              Watching Live
+282	            </button>
+283	            <button
+284	              onClick={() => onWatch(match.id, false)}
+285	              style={{
+286	                background: "#dde3ec",
+287	                color: "#334155",
+288	                border: "none",
+289	                borderRadius: 20,
+290	                padding: "7px 14px",
+291	                fontFamily: "'DM Mono', monospace",
+292	                fontSize: 11,
+293	                fontWeight: 700,
+294	                cursor: "pointer",
+295	              }}
+296	            >
+297	              Close
+298	            </button>
+299	          </div>
+300	        ) : (
+301	          <button
+302	            onClick={() => onWatch(match.id, true)}
+303	            style={{
+304	              background: "#F5C400",
+305	              color: "#1a1a1a",
+306	              border: "none",
+307	              borderRadius: 20,
+308	              padding: "7px 18px",
+309	              fontFamily: "'DM Mono', monospace",
+310	              fontSize: 11,
+311	              fontWeight: 700,
+312	              cursor: "pointer",
+313	              letterSpacing: 0.5,
+314	              transition: "transform 0.15s ease, box-shadow 0.15s ease",
+315	            }}
+316	            onMouseEnter={(e) => {
+317	              e.target.style.transform = "scale(1.05)";
+318	              e.target.style.boxShadow = "0 4px 12px #F5C40066";
+319	            }}
+320	            onMouseLeave={(e) => {
+321	              e.target.style.transform = "scale(1)";
+322	              e.target.style.boxShadow = "none";
+323	            }}
+324	          >
+325	            Watch Live
+326	          </button>
+327	        )}
+328	      </div>
+329	    </div>
+330	  );
+331	}
+332	
+333	function CommentaryItem({ item, index }) {
+334	  const color = getEventColor(item.eventType);
+335	  return (
+336	    <div
+337	      style={{
+338	        display: "flex",
+339	        gap: 12,
+340	        padding: "12px 0",
+341	        borderBottom: "1px solid #dde3ec",
+342	        animation: `commentaryFadeIn 0.4s ease ${index === 0 ? "0s" : ""}`,
+343	        opacity: 1,
+344	      }}
+345	    >
+346	      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, minWidth: 8 }}>
+347	        <div style={{ width: 8, height: 8, borderRadius: "50%", background: color, marginTop: 4, flexShrink: 0 }} />
+348	        <div style={{ width: 1, flex: 1, background: "#dde3ec" }} />
+349	      </div>
+350	      <div style={{ flex: 1 }}>
+351	        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
+352	          <span style={{ fontSize: 10, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>
+353	            {new Date(item.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+354	          </span>
+355	          {item.minute != null && (
+356	            <span style={{ fontSize: 10, fontFamily: "'DM Mono', monospace", color: "#334155", fontWeight: 700 }}>
+357	              {item.minute}'
+358	            </span>
+359	          )}
+360	          {item.sequence != null && (
+361	            <span style={{ fontSize: 10, fontFamily: "'DM Mono', monospace", color: "#64748b" }}>
+362	              Seq {item.sequence}
+363	            </span>
+364	          )}
+365	          {item.period && (
+366	            <span style={{ fontSize: 10, color: "#334155", fontFamily: "'DM Mono', monospace" }}>
+367	              {item.period}
+368	            </span>
+369	          )}
+370	          {item.eventType && (
+371	            <span
+372	              style={{
+373	                background: color + "22",
+374	                color,
+375	                borderRadius: 4,
+376	                padding: "1px 7px",
+377	                fontSize: 9,
+378	                fontWeight: 800,
+379	                fontFamily: "'DM Mono', monospace",
+380	                letterSpacing: 1,
+381	                textTransform: "uppercase",
+382	              }}
+383	            >
+384	              {item.eventType}
+385	            </span>
+386	          )}
+387	        </div>
+388	        {item.actor && (
+389	          <div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", marginBottom: 3 }}>
+390	            {item.actor}
+391	            {item.team && (
+392	              <span style={{ fontWeight: 400, color: "#64748b" }}> · {item.team}</span>
+393	            )}
+394	          </div>
+395	        )}
+396	        <div style={{ fontSize: 13, color: "#1e293b", lineHeight: 1.5 }}>{item.message}</div>
+397	        {item.tags && (
+398	          <div style={{ marginTop: 5 }}>
+399	            <span style={{ fontSize: 9, color: "#64748b", fontFamily: "'DM Mono', monospace", letterSpacing: 1, textTransform: "uppercase" }}>
+400	              {item.tags}
+401	            </span>
+402	          </div>
+403	        )}
+404	      </div>
+405	    </div>
+406	  );
+407	}
+408	
+409	export default function SportsEngine() {
+410	  const ws = useWebSocket();
+411	  const [matches, setMatches] = useState([]);
+412	  const [commentary, setCommentary] = useState([]);
+413	  const [watchingId, setWatchingId] = useState(null);
+414	  const [loading, setLoading] = useState(true);
+415	  const commentaryRef = useRef(null);
+416	
+417	  const fetchMatches = useCallback(async () => {
+418	    try {
+419	      ws.incrementApi();
+420	      const res = await fetch(`${API_BASE}/matches`);
+421	      const json = await res.json();
+422	      setMatches(json.data || []);
+423	    } catch (e) {
+424	      console.error("Failed to fetch matches", e);
+425	    } finally {
+426	      setLoading(false);
+427	    }
+428	  }, [ws]);
+429	
+430	  const fetchCommentary = useCallback(async (matchId) => {
+431	    try {
+432	      ws.incrementApi();
+433	      const res = await fetch(`${API_BASE}/matches/${matchId}/commentary?limit=50`);
+434	      const json = await res.json();
+435	      setCommentary(json.data || []);
+436	    } catch (e) {
+437	      console.error("Failed to fetch commentary", e);
+438	    }
+439	  }, [ws]);
+440	
+441	  useEffect(() => {
+442	    fetchMatches();
+443	  }, [fetchMatches]);
+444	
+445	  useEffect(() => {
+446	    return ws.addListener((msg) => {
+447	      if (msg.type === "match_created") {
+448	        setMatches((prev) => [{ ...msg.data, _new: true }, ...prev]);
+449	      }
+450	      if (msg.type === "commentary" && msg.data?.matchId === watchingId) {
+451	        setCommentary((prev) => [msg.data, ...prev]);
+452	        setTimeout(() => {
+453	          if (commentaryRef.current) {
+454	            commentaryRef.current.scrollTop = 0;
+455	          }
+456	        }, 50);
+457	      }
+458	    });
+459	  }, [ws, watchingId]);
+460	
+461	  const handleWatch = useCallback((matchId, watch) => {
+462	    if (watchingId) ws.unsubscribe(watchingId);
+463	    if (watch) {
+464	      setWatchingId(matchId);
+465	      ws.subscribe(matchId);
+466	      fetchCommentary(matchId);
+467	    } else {
+468	      setWatchingId(null);
+469	      setCommentary([]);
+470	    }
+471	  }, [watchingId, ws, fetchCommentary]);
+472	
+473	  return (
+474	    <>
+475	      <style>{`
+476	        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500;700&family=DM+Sans:wght@400;500;600;700&display=swap');
+477	        * { box-sizing: border-box; margin: 0; padding: 0; }
+478	        body { background: #e8ecf0; font-family: 'DM Sans', sans-serif; }
+479	        @keyframes livePulse {
+480	          0%, 100% { box-shadow: 0 0 0 0 #22c55e44; }
+481	          50% { box-shadow: 0 0 0 6px #22c55e22; }
+482	        }
+483	        @keyframes scorePop {
+484	          0% { transform: scale(1); }
+485	          50% { transform: scale(1.3); }
+486	          100% { transform: scale(1); }
+487	        }
+488	        @keyframes cardSlideIn {
+489	          from { opacity: 0; transform: translateY(-20px); }
+490	          to { opacity: 1; transform: translateY(0); }
+491	        }
+492	        @keyframes commentaryFadeIn {
+493	          from { opacity: 0; transform: translateX(-10px); }
+494	          to { opacity: 1; transform: translateX(0); }
+495	        }
+496	        @keyframes progressBar {
+497	          from { width: 0%; }
+498	          to { width: 100%; }
+499	        }
+500	        @keyframes connectedPulse {
+501	          0%, 100% { opacity: 1; }
+502	          50% { opacity: 0.5; }
+503	        }
+504	        ::-webkit-scrollbar { width: 4px; }
+505	        ::-webkit-scrollbar-track { background: #dde3ec; border-radius: 2px; }
+506	        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+507	      `}</style>
+508	
+509	      <div style={{ minHeight: "100vh", background: "#e8ecf0" }}>
+510	        {/* Header */}
+511	        <div style={{ background: "#F5C400", padding: "16px 32px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+512	          <div>
+513	            <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 32, color: "#1a1a1a", letterSpacing: 2, lineHeight: 1 }}>
+514	              Spofrz
+515	            </div>
+516	            <div style={{ fontSize: 11, color: "#1a1a1a99", fontFamily: "'DM Mono', monospace", letterSpacing: 1 }}>
+517	              Real-time match data demo
+518	            </div>
+519	          </div>
+520	          <div
+521	            style={{
+522	              background: ws.connected ? "#1a1a1a" : "#ef4444",
+523	              color: "#fff",
+524	              borderRadius: 30,
+525	              padding: "8px 18px",
+526	              display: "flex",
+527	              alignItems: "center",
+528	              gap: 8,
+529	              fontSize: 12,
+530	              fontFamily: "'DM Mono', monospace",
+531	              fontWeight: 700,
+532	              letterSpacing: 1,
+533	              transition: "background 0.3s ease",
+534	            }}
+535	          >
+536	            <span
+537	              style={{
+538	                width: 8,
+539	                height: 8,
+540	                borderRadius: "50%",
+541	                background: ws.connected ? "#22c55e" : "#fca5a5",
+542	                animation: ws.connected ? "connectedPulse 2s infinite" : "none",
+543	              }}
+544	            />
+545	            {ws.connected ? "LIVE CONNECTED" : "RECONNECTING..."}
+546	          </div>
+547	        </div>
+548	
+549	        {/* Body */}
+550	        <div style={{ display: "flex", gap: 0, height: "calc(100vh - 74px)" }}>
+551	          {/* Matches Panel */}
+552	          <div style={{ flex: 1, padding: 24, overflowY: "auto" }}>
+553	            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+554	              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+555	                <div style={{ width: 4, height: 22, background: "#F5C400", borderRadius: 2 }} />
+556	                <h2 style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 24, color: "#0a0f1a", letterSpacing: 1 }}>
+557	                  Current Matches
+558	                </h2>
+559	              </div>
+560	              <div
+561	                style={{
+562	                  background: "#0a0f1a",
+563	                  color: "#F5C400",
+564	                  borderRadius: 6,
+565	                  padding: "4px 10px",
+566	                  fontSize: 11,
+567	                  fontFamily: "'DM Mono', monospace",
+568	                  fontWeight: 700,
+569	                  letterSpacing: 1,
+570	                }}
+571	              >
+572	                API: {ws.apiCount}
+573	              </div>
+574	            </div>
+575	
+576	            {loading ? (
+577	              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+578	                {[1, 2, 3, 4].map((i) => (
+579	                  <div key={i} style={{ background: "#fff", borderRadius: 18, height: 180, border: "2px solid #dde3ec", animation: "pulse 1.5s infinite" }} />
+580	                ))}
+581	              </div>
+582	            ) : matches.length === 0 ? (
+583	              <div style={{ textAlign: "center", padding: 60, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>
+584	                No matches found
+585	              </div>
+586	            ) : (
+587	              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+588	                {matches.map((match) => (
+589	                  <MatchCard
+590	                    key={match.id}
+591	                    match={match}
+592	                    watching={watchingId === match.id}
+593	                    onWatch={handleWatch}
+594	                    ws={ws}
+595	                  />
+596	                ))}
+597	              </div>
+598	            )}
+599	          </div>
+600	
+601	          {/* Commentary Panel */}
+602	          <div
+603	            style={{
+604	              width: 340,
+605	              background: "#fff",
+606	              borderLeft: "1px solid #dde3ec",
+607	              display: "flex",
+608	              flexDirection: "column",
+609	            }}
+610	          >
+611	            <div
+612	              style={{
+613	                padding: "16px 20px",
+614	                borderBottom: "1px solid #dde3ec",
+615	                display: "flex",
+616	                justifyContent: "space-between",
+617	                alignItems: "center",
+618	                background: watchingId ? "#f0fdf4" : "#fff",
+619	                transition: "background 0.3s ease",
+620	              }}
+621	            >
+622	              <h3 style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 20, color: "#0a0f1a", letterSpacing: 1 }}>
+623	                Live Commentary
+624	              </h3>
+625	              <span
+626	                style={{
+627	                  background: watchingId ? "#22c55e" : "#dde3ec",
+628	                  color: watchingId ? "#fff" : "#64748b",
+629	                  borderRadius: 6,
+630	                  padding: "3px 10px",
+631	                  fontSize: 10,
+632	                  fontFamily: "'DM Mono', monospace",
+633	                  fontWeight: 700,
+634	                  letterSpacing: 1,
+635	                  transition: "all 0.3s ease",
+636	                }}
+637	              >
+638	                {watchingId ? "REAL-TIME" : "IDLE"}
+639	              </span>
+640	            </div>
+641	
+642	            <div ref={commentaryRef} style={{ flex: 1, overflowY: "auto", padding: "0 20px" }}>
+643	              {!watchingId ? (
+644	                <div
+645	                  style={{
+646	                    display: "flex",
+647	                    flexDirection: "column",
+648	                    alignItems: "center",
+649	                    justifyContent: "center",
+650	                    height: "100%",
+651	                    gap: 12,
+652	                    color: "#64748b",
+653	                    textAlign: "center",
+654	                    padding: 24,
+655	                  }}
+656	                >
+657	                  <div style={{ fontSize: 40 }}>📡</div>
+658	                  <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, lineHeight: 1.6 }}>
+659	                    Click <strong style={{ color: "#1a1a1a" }}>Watch Live</strong> on any match to see real-time commentary here
+660	                  </div>
+661	                </div>
+662	              ) : commentary.length === 0 ? (
+663	                <div
+664	                  style={{
+665	                    display: "flex",
+666	                    flexDirection: "column",
+667	                    alignItems: "center",
+668	                    justifyContent: "center",
+669	                    height: "100%",
+670	                    gap: 12,
+671	                    color: "#64748b",
+672	                    padding: 24,
+673	                    textAlign: "center",
+674	                  }}
+675	                >
+676	                  <div style={{ fontSize: 32, animation: "livePulse 1.5s infinite" }}>⚡</div>
+677	                  <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 12 }}>
+678	                    Waiting for live events...
+679	                  </div>
+680	                </div>
+681	              ) : (
+682	                commentary.map((item, i) => (
+683	                  <CommentaryItem key={item.id || i} item={item} index={i} />
+684	                ))
+685	              )}
+686	            </div>
+687	          </div>
+688	        </div>
+689	      </div>
+690	    </>
+691	  );
+692	}
