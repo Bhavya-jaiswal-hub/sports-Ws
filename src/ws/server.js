@@ -125,8 +125,8 @@ export function attachWebSocketServer(server) {
         if(wsArcjet) {
              try {
                 const ip = getClientIp(req);
-                if(ip) {
-                  req.ip = ip;
+                if(ip && !req.headers["x-forwarded-for"]) {
+                  req.headers["x-forwarded-for"] = ip;
                 }
                 const decision = await wsArcjet.protect(req);
 

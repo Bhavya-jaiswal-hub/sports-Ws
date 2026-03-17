@@ -57,8 +57,10 @@ export function securityMiddleware() {
          const ip = getClientIp(req);
          // Arcjet fingerprinting needs an IP; skip protection if Render/health checks omit it
          if(!ip) return next();
-         // ensure req.ip is populated for arcjet
-         req.ip = ip;
+         // ensure Arcjet sees an IP without mutating req.ip (getter-only in some environments)
+         if(!req.headers["x-forwarded-for"]) {
+            req.headers["x-forwarded-for"] = ip;
+         }
 
          try {
             const decision =  await httpArcjet.protect(req);
