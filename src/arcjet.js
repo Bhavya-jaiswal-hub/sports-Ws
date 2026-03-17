@@ -42,12 +42,15 @@ arcjet({
 }) : null; 
 
 export function getClientIp(req) {
-    return (
+    const candidate =
       req.ip ||
       req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
       req.socket?.remoteAddress ||
-      null
-    );
+      null;
+    if (!candidate || candidate === "undefined" || candidate === "null" || candidate === "") {
+      return null;
+    }
+    return candidate;
 }
 
 export function securityMiddleware() {
@@ -64,7 +67,6 @@ export function securityMiddleware() {
 
          try {
             const decision =  await httpArcjet.protect(req);
-            
 
          if(decision.isDenied()) {
             if(decision.reason.isRateLimit()) {
@@ -75,6 +77,10 @@ export function securityMiddleware() {
          }
 
          } catch (e) {
+             if(String(e?.message || "").toLowerCase().includes('ip') || String(e).includes('ip')) {
+               console.warn('Arcjet skipped (missing ip characteristic)');
+               return next();
+             }
              console.error('Arcjet middleware error' , e);
              return res.status(503).json({error: 'service unavailable'});
          } 

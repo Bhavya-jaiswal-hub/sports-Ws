@@ -140,7 +140,11 @@ export function attachWebSocketServer(server) {
                      return;
                 }
              } catch (e) {
-                 console.error('ws connection error' , e);
+                 if(String(e?.message || '').toLowerCase().includes('ip')) {
+                    console.warn('Arcjet WS skipped (missing ip characteristic)');
+                 } else {
+                    console.error('ws connection error' , e);
+                 }
                  socket.close(1011 ,'server security error');
                  return;
              }
