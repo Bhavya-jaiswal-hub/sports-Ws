@@ -31,7 +31,7 @@ const PORT =
 const HOST = (process.env.HOST || '0.0.0.0');
 
 app.use(express.json());
-app.use(securityMiddleware())
+// app.use(securityMiddleware())
 const server =  http.createServer(app);
 
 console.log("DATABASE_URL:", process.env.DATABASE_URL);
