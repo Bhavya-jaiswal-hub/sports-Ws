@@ -23,6 +23,7 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
+
 const parsedPort = Number(process.env.PORT);
 const PORT =
   Number.isInteger(parsedPort) && parsedPort > 0 && parsedPort <= 65535

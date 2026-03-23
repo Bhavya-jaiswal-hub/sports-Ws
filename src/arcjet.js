@@ -1,6 +1,7 @@
 import arcjet, { detectBot, shield, slidingWindow } from "@arcjet/node";
 
 const arcjetKey = process.env.ARCJET_KEY;
+const arcjetEnv = (process.env.ARCJET_ENV || '').toLowerCase();
 const arcjetMode = process.env.ARCJET_MODE === 'DRY_RUN' ? 'DRY_RUN' : 'LIVE';
 
 
@@ -55,7 +56,7 @@ export function getClientIp(req) {
 
 export function securityMiddleware() {
      return async (req,res ,next) => {
-         if(!httpArcjet) return next();
+         if(!httpArcjet || arcjetEnv === 'development') return next();
 
          const ip = getClientIp(req);
          // Arcjet fingerprinting needs an IP; skip protection if Render/health checks omit it
