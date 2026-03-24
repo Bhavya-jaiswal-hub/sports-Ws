@@ -6,7 +6,7 @@ export const CACHE_TTL_SECONDS = Number(process.env.CACHE_TTL_SECONDS || 10);
 let clientPromise = null;
 
 async function getClient() {
-  if (!redisUrl) return null;
+ if (!redisUrl || redisUrl.trim() === "") return null;
   if (!clientPromise) {
     const client = createClient({
       url: redisUrl,

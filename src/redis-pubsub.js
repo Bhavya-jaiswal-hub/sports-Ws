@@ -9,7 +9,7 @@ const redisUrl = process.env.REDIS_URL;
 let publisherPromise = null;
 
 async function getPublisher() {
-  if (!redisUrl) return null;
+ if (!redisUrl || redisUrl.trim() === "") return null;
   if (!publisherPromise) {
     const client = createClient({
   url: redisUrl,
